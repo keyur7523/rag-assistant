@@ -1,44 +1,35 @@
 # RAG Assistant
 
-A retrieval-augmented generation (RAG) pipeline built from scratch — chunk → embed → vector search → cited answers from Claude — over an enterprise policy knowledge base. This is the foundation for a planned multi-agent tool-calling system.
+Ask natural-language questions over a company's policy documents and get answers **grounded in the source text, with citations** — powered by retrieval-augmented generation (RAG).
 
-## Overview
+Instead of relying on a language model's training data (which can't know your documents and may hallucinate), this system retrieves the passages most relevant to a question and has Claude answer *only* from those passages — citing which document each answer came from, and saying "I don't know" when the answer isn't in the corpus.
 
-Enterprise document Q&A: ingest policy documents, retrieve the most relevant passages by semantic similarity, and have Claude answer grounded in those passages with source citations. The knowledge base is a fictional company's (**Northwind Supply Co.**) returns, refund, shipping, and warranty policies.
+The knowledge base is a fictional company's (**Northwind Supply Co.**) returns, refund, shipping, and warranty policies.
 
-Built deliberately from first principles — the chunker, embedding flow, and vector-store wiring are hand-written rather than pulled from a higher-level framework — as a learning and portfolio project.
+## How it works
 
-## Architecture
+**Building the knowledge base:**
+1. **Load** policy documents from `docs/`.
+2. **Chunk** each document into overlapping passages using a hand-written word-based sliding window.
+3. **Embed** every chunk into a vector with a local `sentence-transformers` model — no API cost.
+4. **Store** the vectors, chunk text, and source metadata in a persistent Chroma database.
 
-**Ingestion (offline, run once):**
-1. **Load** — read policy markdown from `docs/`
-2. **Chunk** — hand-written word-based sliding window (configurable chunk size and overlap)
-3. **Embed** — `sentence-transformers` (`all-MiniLM-L6-v2`, 384-dim), runs locally, no API cost
-4. **Store** — persistent Chroma vector database (`db/`), with source metadata attached for citations
+**Answering a question:**
+1. **Embed** the question with the same model.
+2. **Retrieve** the most semantically similar chunks from the vector store.
+3. **Assemble** the retrieved passages into a context block, labeled with their source files.
+4. **Generate** an answer with Claude, constrained to the retrieved context and required to cite its sources.
 
-**Query (online):**
-1. **Embed** the question with the same model
-2. **Retrieve** the top-k nearest chunks from Chroma
-3. **Augment** a prompt with the retrieved chunks
-4. **Generate** a cited answer with Claude
+The retrieval and embedding layers are built from first principles — a custom chunker and direct vector-store wiring — rather than an off-the-shelf RAG framework, to keep the internals transparent and under my control.
 
 ## Tech stack
 
-- Python
-- Anthropic Claude API (`claude-opus-4-8`)
-- `sentence-transformers` — local embeddings
-- ChromaDB — persistent vector store
+- **Python**
+- **Anthropic Claude API** (`claude-opus-4-8`) — grounded answer generation
+- **sentence-transformers** (`all-MiniLM-L6-v2`) — local text embeddings
+- **ChromaDB** — persistent vector store with metadata
 
-## Project structure
-
-```
-docs/               Fictional Northwind Supply Co. policy documents (the corpus)
-stage0_hello.py     Stage 0 — a single Claude API call
-stage1_ingest.py    Stage 1 — load, chunk, embed, and store the corpus
-requirements.txt    Dependencies
-```
-
-## Setup
+## Getting started
 
 ```bash
 python3 -m venv .venv
@@ -47,24 +38,39 @@ pip install -r requirements.txt
 export ANTHROPIC_API_KEY=your-key-here
 ```
 
-The API key is read from the environment only — it is never committed (`.env` is gitignored).
+The API key is read from the environment only and is never committed.
 
-## Usage
+**1. Build the vector store** (run once, ingests the documents):
 
 ```bash
-python stage1_ingest.py
+python ingest.py
 ```
 
-This loads the policy documents, chunks and embeds them, and populates the local Chroma vector store.
+**2. Ask a question:**
 
-## Status & roadmap
+```bash
+python query.py
+```
 
-- [x] **Stage 0** — Claude API hello
-- [x] **Stage 1 (ingestion)** — chunk, embed, and store the corpus
-- [ ] **Stage 1 (query)** — retrieval + cited generation
-- [ ] **Stage 2** — multi-tool agent (SQLite CRM lookup, document search, action tool)
-- [ ] **Stage 3** — evaluation harness + FastAPI deployment
-- [ ] **Stage 4** — self-hosted open model + local fine-tune
+The question is set inside `query.py`; edit it to ask something else.
+
+## Example
+
+**In-corpus question** — *"How long do I have to return an item?"*
+> You may return most items within **30 days** of the delivery date...
+> Source: returns_policy.md
+
+**Out-of-corpus question** — *"Who is Northwind's CEO?"*
+> I don't know. The provided context only covers Northwind Supply Co.'s return and refund policies and does not contain that information.
+
+The second case is the important one: the system refuses to invent an answer that isn't supported by the source documents.
+
+## Planned improvements
+
+- **Retrieval quality tuning** — chunk sizing and cosine-normalized embeddings, evaluated with before/after retrieval tests.
+- **Tool-calling agent** — an agent that combines document search with structured data lookups (e.g. order/CRM records) to handle multi-step tasks.
+- **Evaluation harness** — automatic scoring of answer correctness across a test set of questions.
+- **API deployment** — expose the system over an HTTP API.
 
 ## Notes
 
