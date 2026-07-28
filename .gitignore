@@ -6,3 +6,4 @@ db/
 .claude/
 orders.db
 email_drafts/
+eval_results/

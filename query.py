@@ -1,7 +1,9 @@
 import chromadb
 from sentence_transformers import SentenceTransformer
 from anthropic import Anthropic
+from dotenv import load_dotenv
 
+load_dotenv()
 client = Anthropic()
 chroma_client = chromadb.PersistentClient('db')
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")

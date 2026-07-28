@@ -80,10 +80,29 @@ Neither answer is stored anywhere. Both require combining a date from the databa
 **Taking an action** — *"A customer emailed saying order 12345 never arrived — handle it."*
 > Finds the order 19 days overdue, retrieves the shipping policy's late-delivery and lost-package rules, and drafts a reply offering a reshipment or a full refund — saved to `email_drafts/` for a human to review.
 
+## Evaluation
+
+The agent is scored automatically against a test set of 18 cases spanning policy questions, order lookups, multi-tool chaining, actions, and robustness:
+
+```bash
+python run_eval.py            # every case
+python run_eval.py chaining   # one category
+```
+
+Each case is scored on **two independent axes**:
+
+- **Trajectory** — did the agent call the tools it needed? An agent that produces the right answer without consulting the order database guessed correctly, which is a bug even though the text looks right.
+- **Outcome** — does the answer contain the expected facts?
+
+The chaining cases assert on a *computed* value — the return deadline — that appears in neither the database nor the policy documents, so it can only be produced by combining both sources and doing the arithmetic. Robustness cases assert the opposite: that an unknown order is reported as not found, that an out-of-corpus question is declined rather than answered, and that a plain greeting triggers no tool calls at all.
+
+Every run is written to a timestamped JSON file, so the effect of a change — a prompt edit, a different chunking strategy, another model — can be measured by diffing runs rather than re-reading transcripts.
+
+Current status: **18/18 passing.**
+
 ## Roadmap
 
-- **Evaluation harness** — a test set of agent tasks with automatic scoring of whether each was completed correctly.
-- **Retrieval quality tuning** — chunk sizing and cosine-normalized embeddings, measured with before/after retrieval tests.
+- **Retrieval quality tuning** — chunk sizing and cosine-normalized embeddings, measured against the eval suite.
 - **HTTP API** — expose the agent over FastAPI.
 - **Self-hosted inference** — run an open model locally alongside the Claude API.
 
