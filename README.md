@@ -1,33 +1,42 @@
-# RAG Assistant
+# Northwind Support Agent
 
-Ask natural-language questions over a company's policy documents and get answers **grounded in the source text, with citations** — powered by retrieval-augmented generation (RAG).
+An AI customer-support agent that answers questions by **choosing and chaining its own tools** — querying an orders database, searching policy documents with retrieval-augmented generation (RAG), and drafting customer replies for human review.
 
-Instead of relying on a language model's training data (which can't know your documents and may hallucinate), this system retrieves the passages most relevant to a question and has Claude answer *only* from those passages — citing which document each answer came from, and saying "I don't know" when the answer isn't in the corpus.
+The agent decides which tools it needs and in what order. Given *"A customer emailed saying order 12345 never arrived — handle it,"* it looks up the order, discovers it's 19 days overdue, searches the shipping policy for the late-delivery rule, and drafts a reply citing that policy — without being told to take any of those steps.
 
-The knowledge base is a fictional company's (**Northwind Supply Co.**) returns, refund, shipping, and warranty policies.
+Everything is grounded in real data from its tools. It cites the policy documents it relies on, and says "I don't know" rather than inventing an answer.
 
-## How it works
+The data is a fictional company — **Northwind Supply Co.** — with an orders database and four policy documents (returns, refunds, shipping, warranty).
 
-**Building the knowledge base:**
-1. **Load** policy documents from `docs/`.
-2. **Chunk** each document into overlapping passages using a hand-written word-based sliding window.
-3. **Embed** every chunk into a vector with a local `sentence-transformers` model — no API cost.
-4. **Store** the vectors, chunk text, and source metadata in a persistent Chroma database.
+## The agent
 
-**Answering a question:**
-1. **Embed** the question with the same model.
-2. **Retrieve** the most semantically similar chunks from the vector store.
-3. **Assemble** the retrieved passages into a context block, labeled with their source files.
-4. **Generate** an answer with Claude, constrained to the retrieved context and required to cite its sources.
+The core is a hand-written **tool-calling loop**: the agent is given a task and a set of tools, Claude decides which tool to call, the loop executes it, feeds the result back, and repeats until the task is done.
 
-The retrieval and embedding layers are built from first principles — a custom chunker and direct vector-store wiring — rather than an off-the-shelf RAG framework, to keep the internals transparent and under my control.
+| Tool | What it does |
+| --- | --- |
+| `get_order_status` | Looks up an order in the SQLite database — customer, item, status, order and delivery dates. |
+| `search_policies` | Semantic search over the policy documents (RAG), returning the most relevant excerpts with their sources. |
+| `draft_reply` | Composes a customer reply and saves it for human review. Drafts are never sent automatically. |
+
+The two lookup tools are deliberately different in kind: one is an **exact-key query** against structured data, the other is **semantic retrieval** over unstructured text. Answering a question like *"can I still return this?"* requires both — the delivery date from the database, the return window from the policy documents — plus date arithmetic the agent performs itself.
+
+## The RAG pipeline
+
+`search_policies` is backed by a retrieval pipeline built from first principles rather than an off-the-shelf framework:
+
+**Ingestion** (run once): load the policy documents → chunk them with a hand-written word-based sliding window (configurable size and overlap) → embed each chunk locally with `sentence-transformers` → store vectors, text, and source metadata in a persistent Chroma database.
+
+**Retrieval**: embed the query with the same model → return the nearest chunks with their source files.
+
+Retrieval returns *evidence*, not conclusions — the agent does the reasoning and citing. `query.py` also runs standalone as a plain document-Q&A demo.
 
 ## Tech stack
 
 - **Python**
-- **Anthropic Claude API** (`claude-opus-4-8`) — grounded answer generation
-- **sentence-transformers** (`all-MiniLM-L6-v2`) — local text embeddings
-- **ChromaDB** — persistent vector store with metadata
+- **Anthropic Claude API** (`claude-opus-4-8`) — agent reasoning and tool selection
+- **sentence-transformers** (`all-MiniLM-L6-v2`) — local embeddings, no API cost
+- **ChromaDB** — persistent vector store
+- **SQLite** — orders database (standing in for a CRM / system of record)
 
 ## Getting started
 
@@ -40,38 +49,44 @@ export ANTHROPIC_API_KEY=your-key-here
 
 The API key is read from the environment only and is never committed.
 
-**1. Build the vector store** (run once, ingests the documents):
+**1. Build the data stores** (run once):
 
 ```bash
-python ingest.py
+python ingest.py        # chunks and embeds the policy documents into Chroma
+python seed_orders.py   # creates and seeds the SQLite orders database
 ```
 
-**2. Ask a question:**
+**2. Run the agent:**
 
 ```bash
-python query.py
+python agent.py
 ```
 
-The question is set inside `query.py`; edit it to ask something else.
+The customer message is set inside `agent.py`; edit it to try other scenarios.
 
-## Example
+## Examples
 
-**In-corpus question** — *"How long do I have to return an item?"*
-> You may return most items within **30 days** of the delivery date...
-> Source: returns_policy.md
+**Tool selection** — *"How long do I have to return something?"*
+> Searches the policy documents only. Answers *30 days from the delivery date*, citing `returns_policy.md`.
 
-**Out-of-corpus question** — *"Who is Northwind's CEO?"*
-> I don't know. The provided context only covers Northwind Supply Co.'s return and refund policies and does not contain that information.
+**Chaining two tools with reasoning** — *"I got order 12346 last week — can I still return it?"*
+> Looks up the order (delivered 2026-07-18), searches the return policy (30-day window), then computes: the window runs to 2026-08-17, so 9 days in — still eligible.
 
-The second case is the important one: the system refuses to invent an answer that isn't supported by the source documents.
+**The same question, opposite answer** — *"I got order 12347 in June — can I still return it?"*
+> Delivered 2026-06-08, so the window closed 2026-07-08 — no longer returnable. It offers to check the warranty policy instead.
 
-## Planned improvements
+Neither answer is stored anywhere. Both require combining a date from the database with a rule from the documents.
 
-- **Retrieval quality tuning** — chunk sizing and cosine-normalized embeddings, evaluated with before/after retrieval tests.
-- **Tool-calling agent** — an agent that combines document search with structured data lookups (e.g. order/CRM records) to handle multi-step tasks.
-- **Evaluation harness** — automatic scoring of answer correctness across a test set of questions.
-- **API deployment** — expose the system over an HTTP API.
+**Taking an action** — *"A customer emailed saying order 12345 never arrived — handle it."*
+> Finds the order 19 days overdue, retrieves the shipping policy's late-delivery and lost-package rules, and drafts a reply offering a reshipment or a full refund — saved to `email_drafts/` for a human to review.
+
+## Roadmap
+
+- **Evaluation harness** — a test set of agent tasks with automatic scoring of whether each was completed correctly.
+- **Retrieval quality tuning** — chunk sizing and cosine-normalized embeddings, measured with before/after retrieval tests.
+- **HTTP API** — expose the agent over FastAPI.
+- **Self-hosted inference** — run an open model locally alongside the Claude API.
 
 ## Notes
 
-The document corpus is entirely fictional. No credentials or secrets are stored in this repository; the Anthropic API key is supplied via an environment variable at runtime.
+The company, orders, and policy documents are entirely fictional. No credentials or secrets are stored in this repository; the Anthropic API key is supplied via an environment variable at runtime. Generated artifacts — the vector store, the orders database, and email drafts — are excluded from version control and rebuilt by the setup scripts.

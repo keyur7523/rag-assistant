@@ -1,47 +1,17 @@
+import datetime
 from anthropic import Anthropic
 import sqlite3
-from datetime import date
+import datetime
 from query import retrieval_query
+from tool import tool
+from dotenv import load_dotenv
+
 
 itrs = 5
+load_dotenv()
 client = Anthropic()
 connection = sqlite3.connect("orders.db")
 cursor = connection.cursor()
-
-tool = [{
-    'name': 'get_order_status',
-    'description': """
-    Look up a specific customer order by its order ID. Returns the order's current status, the item ordered, the order date, and the expected delivery date. Use this whenever a customer asks about a particular order.
-    """,
-    'input_schema': {
-        'type': 'object',
-        'properties': {
-            'order_id': {
-                'type': 'string',
-                'description': "The customer's order ID, e.g. 12345.",
-            },
-        },
-        'required': ['order_id'],
-    },
-},
-{
-    'name': 'search_policies',
-    'description': """
-    Search Northwind Supply Co.'s official policy documents for information about returns, refunds, shipping timelines, and warranties. Use this whenever a customer question depends on company policy — for example return windows, refund processing times, restocking fees, what counts as a late delivery, or warranty coverage. Returns the most relevant policy excerpts with their source document.
-    """,
-    'input_schema': {
-        'type': 'object',
-        'properties': {
-            'query': {
-                'type': 'string',
-                'description': """
-                A natural-language search query describing the policy information needed, e.g. "return window for opened electronics" or "what counts as a late delivery".
-                """,
-            }
-        },
-        'required': ['query'],
-    }
-}]
 
 def get_order_status(order_id):
     cursor.execute(
@@ -55,6 +25,8 @@ def get_order_status(order_id):
         return f"No order found with id:{order_id}"
     return f"""Order 
             Order Id: {order_id}
+            Customer name: {result[1]}
+            Item: {result[2]}
             status: {result[4]} 
             ordered on: {result[3]}
             delivery on: {result[5]}
@@ -63,13 +35,19 @@ def get_order_status(order_id):
 def search_policies(question):
     return retrieval_query(question)
 
+def draft_reply(order_id, customer_name, message):
+    with open(f"email_drafts/{order_id}-{customer_name}-{datetime.datetime.now().timestamp()}.txt", "w", encoding="utf-8") as file:
+        file.write(message)
+    return f"Draft saved for order {order_id}."
+
 messages = [
         {
             "role": "user",
             #"content": f"What's the status of order 12345?",
             #"content": f"How long do I have to return something?",
             #"content": f"I got order 12346 last week — can I still return it?",
-            "content": "I got order 12347 in June — can I still return it?",
+            #"content": "I got order 12347 in June — can I still return it?",
+            'content': "A customer emailed saying order 12345 never arrived. Handle it."
         }
     ]
 
@@ -78,6 +56,10 @@ def tool_orchestrator(tool_requested, parameters):
         return get_order_status(parameters['order_id'])
     if tool_requested == 'search_policies':
         return search_policies(parameters['query'])
+    if tool_requested == 'draft_reply':
+        return draft_reply(parameters['order_id'], parameters['customer_name'], parameters['message'])
+    else:
+        return f"Unknown tool: {tool_requested}"
 
 for i in range(itrs):
     message = client.messages.create(
@@ -85,7 +67,7 @@ for i in range(itrs):
         system=f"""
         You are a customer support assistant for Northwind Supply Co.
 
-        Today's date is {date.today().isoformat()}.
+        Today's date is {datetime.date.today().isoformat()}.
 
         Use the available tools to answer customer questions. Look up specific orders
         when a customer mentions an order, and search the policy documents whenever the

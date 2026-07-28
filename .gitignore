@@ -5,3 +5,4 @@ __pycache__/
 db/
 .claude/
 orders.db
+email_drafts/
