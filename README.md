@@ -64,6 +64,36 @@ python agent.py
 
 The customer message is set inside `agent.py`; edit it to try other scenarios.
 
+**3. Or run it as an HTTP API:**
+
+```bash
+uvicorn api:app --port 8000
+```
+
+Interactive documentation is served at `http://localhost:8000/docs`.
+
+```bash
+curl -X POST localhost:8000/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "Can I still return order 12346?"}'
+```
+
+The response carries the answer plus the agent's full tool trace — which tools it chose, in order, and the arguments it passed:
+
+```json
+{
+  "answer": "Yes, you can still return order 12346 ... your return window runs through 2026-08-17 ...",
+  "tools_used": ["get_order_status", "search_policies"],
+  "iterations": 2,
+  "tool_details": [
+    { "tool": "get_order_status", "input": { "order_id": "12346" } },
+    { "tool": "search_policies", "input": { "query": "return window how long after delivery can items be returned" } }
+  ]
+}
+```
+
+Exposing the trace makes the agent's reasoning observable rather than opaque — note that the search query is one the agent wrote itself from the customer's question. `GET /health` is available for readiness checks. Running as a server also loads the embedding model once at startup rather than on every invocation.
+
 ## Examples
 
 **Tool selection** — *"How long do I have to return something?"*
@@ -103,8 +133,7 @@ Current status: **18/18 passing.**
 ## Roadmap
 
 - **Retrieval quality tuning** — chunk sizing and cosine-normalized embeddings, measured against the eval suite.
-- **HTTP API** — expose the agent over FastAPI.
-- **Self-hosted inference** — run an open model locally alongside the Claude API.
+- **Self-hosted inference** — serve an open model locally alongside the Claude API and compare the two on the same eval suite.
 
 ## Notes
 
