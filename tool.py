@@ -54,4 +54,31 @@ tool = [{
                 "required": ['order_id', 'customer_name', 'message'],
             },
         },
+        {
+            "name": "escalate_to_human",
+            "description": (
+                "Hand the conversation to a human support agent. Use this when the "
+                "request is outside policy tools (billing disputes beyond published "
+                "rules, legal threats, repeated frustration, or anything you cannot "
+                "verify with get_order_status / search_policies). Do not invent an answer."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "Short reason for escalation, for the human agent.",
+                    },
+                    "order_id": {
+                        "type": "string",
+                        "description": "Order ID if one was mentioned, otherwise omit.",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Brief summary of what the customer asked and what you already checked.",
+                    },
+                },
+                "required": ["reason", "summary"],
+            },
+        },
 ]

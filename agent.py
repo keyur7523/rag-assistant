@@ -4,10 +4,14 @@ import sqlite3
 from query import retrieval_query
 from tool import tool
 from dotenv import load_dotenv
+from guardrails import check_input, check_tool_call, check_output
 load_dotenv()
 
 
 def run_agent(user_message):
+    blocked = check_input(user_message)
+    if blocked:
+        return blocked.message, [("guardrail_block", {"reason": blocked.reason})], 0, False
     itrs = 5
     client = Anthropic()
     connection = sqlite3.connect("orders.db")
@@ -61,8 +65,31 @@ def run_agent(user_message):
             return search_policies(parameters['query'])
         if tool_requested == 'draft_reply':
             return draft_reply(parameters['order_id'], parameters['customer_name'], parameters['message'])
+        if tool_requested == "escalate_to_human":
+            return escalate_to_human(
+                parameters["reason"],
+                parameters["summary"],
+                parameters.get("order_id"),
+            )
         else:
             return f"Unknown tool: {tool_requested}"
+
+    def escalate_to_human(reason, summary, order_id=None):
+        ticket = {
+            "reason": reason,
+            "summary": summary,
+            "order_id": order_id,
+            "created_at": datetime.datetime.now().isoformat(),
+        }
+        import json
+        from pathlib import Path
+        Path("escalations").mkdir(exist_ok=True)
+        path = Path("escalations") / f"{datetime.datetime.now().timestamp()}.json"
+        path.write_text(json.dumps(ticket, indent=2), encoding="utf-8")
+        return (
+            f"Escalated to a human agent. Ticket saved at {path.name}. "
+            "Tell the customer a human will follow up; do not invent a resolution."
+        )
 
     for i in range(itrs):
         message = client.messages.create(
@@ -102,7 +129,12 @@ def run_agent(user_message):
                     parameters = block.input
                     #print(f'parameters={parameters}')
                     tool_requested = block.name
-                    tool_output = tool_orchestrator(tool_requested, parameters)
+                    tool_guard = check_tool_call(tool_requested, parameters)
+                    if tool_guard:
+                        tools_used.append(("guardrail_block", {"reason": tool_guard.reason, "tool": tool_requested}))
+                        tool_output = tool_guard.message
+                    else:
+                        tool_output = tool_orchestrator(tool_requested, parameters)
                     tool_result.append({
                         "type": "tool_result", 
                         "tool_use_id": block.id, 
@@ -125,9 +157,9 @@ def run_agent(user_message):
         if block.type == "text":
             text_block.append(block.text)
             
-    return '\n'.join(text_block), tools_used, i+1, itr_overshoot
-
-    
+    answer = '\n'.join(text_block)
+    answer, _flags = check_output(answer, tools_used)
+    return answer, tools_used, i + 1, itr_overshoot
 
 if __name__ == '__main__':
     response, tools_used, iterations_ran, iterations_overshoot = run_agent(user_message="A customer emailed saying order 12345 never arrived. Handle it.")
