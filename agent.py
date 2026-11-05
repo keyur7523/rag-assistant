@@ -111,7 +111,7 @@ def run_agent(user_message):
             """,
             tools=tool,
             messages=messages,
-            model="claude-opus-4-8",
+            model="claude-sonnet-4-5",
         )
 
         if (message.stop_reason == 'end_turn'): break

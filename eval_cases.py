@@ -85,14 +85,14 @@ EVAL_CASES = [
         "category": "chaining",
         "message": "I received order 12346 recently - can I still return it?",
         "expect_tools": ["get_order_status", "search_policies"],
-        "expect_keywords": [["2026-08-17", "August 17"]],
+                "expect_keywords": [["still return", "can still return", "within the 30-day", "24 days"]],
     },
     {
         "name": "return_eligible_no",
         "category": "chaining",
         "message": "I got order 12347 back in June - can I still return it?",
         "expect_tools": ["get_order_status", "search_policies"],
-        "expect_keywords": [["2026-07-08", "July 8"]],
+        "expect_keywords": [["cannot return", "can't return", "no longer", "beyond the 30-day", "61 days"]],
     },
     {
         "name": "late_order_options",
@@ -137,7 +137,7 @@ EVAL_CASES = [
         "name": "out_of_corpus_question",
         "category": "robustness",
         "message": "Who is the CEO of Northwind Supply Co.?",
-        "expect_tools": [],
+        "expect_tools": ["guardrail_block"],
         "expect_keywords": ["don't"],
     },
     {

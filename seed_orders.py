@@ -1,11 +1,11 @@
 import sqlite3
 
 orders_data = [
-    (12345, "Alice Chen",    "Desk Lamp",               "2026-07-01", "in transit", "2026-07-08"),
-    (12346, "Marcus Webb",   "Wireless Keyboard",       "2026-07-14", "delivered",  "2026-07-18"),
-    (12347, "Priya Raman",   "Standing Desk Converter", "2026-06-02", "delivered",  "2026-06-08"),
-    (12348, "Daniel Okafor", "USB-C Hub",               "2026-07-22", "in transit", "2026-07-29"),
-    (12349, "Sofia Reyes",   "Monitor Arm",             "2026-07-10", "delivered",  "2026-07-15"),
+    (12345, "Alice Chen",    "Desk Lamp",               "2026-10-20", "in transit", "2026-10-27"),  # late: expected ~9 days ago
+    (12346, "Marcus Webb",   "Wireless Keyboard",       "2026-10-28", "delivered",  "2026-10-30"),  # still in 30-day window → deadline 2026-11-29
+    (12347, "Priya Raman",   "Standing Desk Converter", "2026-09-01", "delivered",  "2026-09-05"),  # past window → deadline 2026-10-05
+    (12348, "Daniel Okafor", "USB-C Hub",               "2026-11-01", "in transit", "2026-11-08"),
+    (12349, "Sofia Reyes",   "Monitor Arm",             "2026-10-20", "delivered",  "2026-10-25"),
 ]
 
 def create_my_table():
