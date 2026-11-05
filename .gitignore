@@ -7,3 +7,4 @@ db/
 orders.db
 email_drafts/
 eval_results/
+.DS_Store
