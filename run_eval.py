@@ -26,7 +26,6 @@ from eval_cases import EVAL_CASES
 
 RESULTS_DIR = "eval_results"
 
-
 def score(case, answer, tool_names, hit_iteration_cap):
     """Return (passed, [reasons]) for a single completed run."""
     reasons = []
@@ -67,7 +66,6 @@ def score(case, answer, tool_names, hit_iteration_cap):
         reasons.append("hit iteration cap without finishing")
 
     return (not reasons), reasons
-
 
 def main():
     categories = set(sys.argv[1:])
@@ -115,7 +113,6 @@ def main():
     report(results)
     save(results)
 
-
 def report(results):
     passed = sum(r["passed"] for r in results)
     total = len(results)
@@ -140,7 +137,6 @@ def report(results):
         for r in failures:
             print(f"  {r['name']}: {'; '.join(r['reasons'])}")
 
-
 def save(results):
     """Write the full run to a timestamped file.
 
@@ -155,7 +151,6 @@ def save(results):
     path = Path(RESULTS_DIR) / f"eval-{stamp}.json"
     path.write_text(json.dumps(results, indent=2), encoding="utf-8")
     print(f"\nFull results: {path}")
-
 
 if __name__ == "__main__":
     main()
